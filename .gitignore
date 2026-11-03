@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.env
+logs/
+reports/
+VE_testbench/
+autom4te.cache/
+config.status
+config.log
+*/modules/*/reports/
+src/TrainDataset/
+*.gguf
