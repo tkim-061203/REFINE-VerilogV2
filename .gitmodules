@@ -1,0 +1,3 @@
+[submodule "ext/verilog-eval"]
+	path = ext/verilog-eval
+	url = https://github.com/tkim-061203/verilog-eval.git
