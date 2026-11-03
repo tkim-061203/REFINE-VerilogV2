@@ -1,0 +1,43 @@
+file,key,column,paper_value,paper_location,note
+arms.csv,full/F0/rl1,p1,41.4,Table IV,REFINE-VerilogV2 F0 (single shot)
+arms.csv,full/F0/rl2,p1,30.0,Table IV,
+arms.csv,full/F0/ve,p1,56.4,Table IV,
+arms.csv,full/F2/rl1,p1,28.3,Table IV,REFINE-VerilogV2 F2 (oracle-free loop)
+arms.csv,full/F2/rl2,p1,31.6,Table IV,
+arms.csv,full/F2/ve,p1,41.0,Table IV,
+arms.csv,full/F3/rl1,p1,74.5,Table IV,REFINE-VerilogV2 F3 (official testbench)
+arms.csv,full/F3/rl2,p1,61.2,Table IV,
+arms.csv,full/F3/ve,p1,73.7,Table IV,
+arms.csv,base/F3/rl1,p1,67.6,Table IV,F3 base model in both roles
+arms.csv,base/F3/rl2,p1,54.0,Table IV,
+arms.csv,base/F3/ve,p1,57.1,Table IV,
+arms.csv,gen/F3/rl1,p1,69.7,Table IV,F3 single shared adapter
+arms.csv,gen/F3/rl2,p1,59.2,Table IV,
+arms.csv,gen/F3/ve,p1,74.4,Table IV,
+arms.csv,clean/F3/rl1,p1,74.5,Table IV,F3 retrained filtered corpus
+arms.csv,clean/F3/rl2,p1,60.0,Table IV,
+arms.csv,clean/F3/ve,p1,66.0,Table IV,
+arms.csv,random/F3/rl1,p1,75.2,Table IV,F3 retrained random corpus
+arms.csv,random/F3/rl2,p1,64.4,Table IV,
+arms.csv,random/F3/ve,p1,66.7,Table IV,
+arms.csv,full/F3/rl1,p5,75.9,Section IV-D,
+arms.csv,full/F3/rl2,p5,68.0,Section IV-D,
+arms.csv,full/F0s/rl1,p5,56.5,Section IV-B,no loop / T=0.8 / 10 trials / reference RTL hidden
+arms.csv,full/F0s/rl2,p5,48.3,Section IV-B,
+paired.csv,full-F3-vs-F2-rl1,diff,46.2,Section IV-D,official testbench over generated testbench
+paired.csv,full-F3-vs-F2-rl2,diff,29.6,Section IV-D,
+paired.csv,full-vs-gen-F3-rl1,diff [lo hi],4.8 [-0.7 12.4],Section IV-D,paper reports gen minus full: -4.8 [-12.4 0.7]
+paired.csv,full-vs-gen-F3-rl2,diff [lo hi],2.0 [-2.4 7.6],Section IV-D,paper reports gen minus full: -2.0 [-7.6 2.4]
+paired.csv,clean-vs-random-F3-rl1,diff,-0.7,Section IV-D,filtered minus random retrain
+paired.csv,clean-vs-random-F3-rl2,diff,-4.4,Section IV-D,
+paired.csv,clean-vs-random-F3-ve,diff,-0.6,Section IV-D,
+paired.csv,full-F3-vs-F3ns-rl1,diff,-10.3,Section IV-D,removing the Sanitizer raises pass@1 by 10.3
+paired.csv,full-F3-vs-F3ns-rl2,diff,-8.8,Section IV-D,
+paired.csv,full-F3-vs-F3nt-rl1,diff,9.0,Section IV-D,removing TED costs 9.0
+paired.csv,full-F3-vs-F3nt-rl2,diff,7.2,Section IV-D,
+paired.csv,clean-vs-full-F3-rl1,diff,0.0,Section IV-E,decontaminated retrain versus released Generator
+paired.csv,clean-vs-full-F3-rl2,diff,-1.2,Section IV-E,
+paired.csv,clean-vs-full-F0-ve,diff,-26.3,Section IV-E,greedy single shot on VerilogEval
+paired.csv,clean-vs-full-F3-ve,diff,-7.7,Section IV-E,
+leaked.json,rl1,len,11,Section IV-E,corpus-wide leak scan (src/leakcheck.py) out of 29 tasks
+leaked.json,rl2,len,22,Section IV-E,out of 50 tasks

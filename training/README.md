@@ -30,3 +30,25 @@ VerilogEval files.
 
 `scripts/merge_lora.py` merges an adapter into the base model for vLLM serving. Adapter configs and trainer
 states of the released checkpoints are in `metadata/`.
+
+## Retrained Generators (Table IV)
+
+`run_retrain.sh clean random` retrains the Generator twice with the recipe above, changed only in the data
+(`scripts/train_gen_retrain.py`):
+
+| Variant | Table IV row | Data |
+|---|---|---|
+| `clean` | F3, retrained, filtered corpus | stages 0–5 / 11–15 / 16+ of the filtered corpus: 197,561 / 27,393 / 5,223 rows |
+| `random` | F3, retrained, random corpus | same stage sizes, drawn uniformly (seed 3407) from well-formed PyraNet rows, no synthesis or cell-count filter |
+
+Both have 230,177 rows, without `VE_text_156.jsonl` and without the 733 PyraNet rows that match a benchmark
+reference (`data/leak_rows.json`, from `src/leakcheck.py --rows-out`). The 6–10 stage is missing because its
+index file was overwritten after the original training. Index files: `data/{clean,random}_s{1,2,3}.npy`
+(row numbers of `Pyranet_text_only.jsonl`, the file `train_gen_new.py` reads), built by
+`make_retrain_data.py`, summarized in `data/manifest.json`. Stage s1 starts a fresh LoRA on the base model,
+s2 and s3 load the previous stage's adapter, and the s3 adapter is merged with `scripts/merge_adapter.py`
+into `$RETRAIN_DIR/models/model_qwen_generator_<variant>_merged` (default `RETRAIN_DIR=~/retrain`).
+
+```bash
+TRAIN_JSONL=<Pyranet_text_only.jsonl> GPU=0 training/run_retrain.sh clean random
+```

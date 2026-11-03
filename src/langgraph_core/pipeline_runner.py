@@ -1,13 +1,13 @@
 """
-COMBA Pipeline Runner — Shared module for api_server.py and run.py.
+COMBA Pipeline Runner - Shared module for api_server.py and run.py.
 
 Provides:
-    create_llm()              — Unified LLM factory (StubLLM → COMBALlm → ChatOpenAI)
-    get_pipeline(llm)         — Lazy-init singleton graph
-    run_pipeline_sync()       — Run full pipeline, return final state
+    create_llm()              - Unified LLM factory (StubLLM -> COMBALlm -> ChatOpenAI)
+    get_pipeline(llm)         - Lazy-init singleton graph
+    run_pipeline_sync()       - Run full pipeline, return final state
                                 (auto-dispatches to multi_sample if SC=1)
-    run_pipeline_streaming()  — Yield (node_name, state_update) per step
-    run_pipeline_batch()      — Batch evaluation over module directories
+    run_pipeline_streaming()  - Yield (node_name, state_update) per step
+    run_pipeline_batch()      - Batch evaluation over module directories
                                 (auto-dispatches to multi_sample if SC=1)
 """
 
@@ -27,23 +27,23 @@ def cprint(*args, **kwargs):
         print(*args, **kwargs)
 
 
-# ──────────────────────────────────────────────────────────────
+# --------------------------------------------------------------
 # Self-Consistency Detection
-# ──────────────────────────────────────────────────────────────
+# --------------------------------------------------------------
 
 def _is_sc_enabled() -> bool:
     """Check env flag COMBA_SELF_CONSISTENCY=1."""
     return os.environ.get("COMBA_SELF_CONSISTENCY", "0") == "1"
 
 
-# ──────────────────────────────────────────────────────────────
-# LLM Factory — Unified fallback chain
-# ──────────────────────────────────────────────────────────────
+# --------------------------------------------------------------
+# LLM Factory - Unified fallback chain
+# --------------------------------------------------------------
 
 def create_llm():
     """
     Create LLM with fallback chain:
-      1. COMBA_USE_STUB=1 → StubLLM (testing)
+      1. COMBA_USE_STUB=1 -> StubLLM (testing)
       2. COMBALlm.from_env() (dual-GPU vLLM)
       3. ChatOpenAI (Ollama / single vLLM)
     """
@@ -70,9 +70,9 @@ def create_llm():
     return ChatOpenAI(base_url=base_url, api_key=api_key, model=model, temperature=0.1)
 
 
-# ──────────────────────────────────────────────────────────────
+# --------------------------------------------------------------
 # Pipeline Singleton
-# ──────────────────────────────────────────────────────────────
+# --------------------------------------------------------------
 
 _llm = None
 _graph = None
@@ -155,7 +155,7 @@ def _extract_header_from_verified(verified_file_path: str, target_module_name: s
         # Scope the declaration scan to THIS module's body. Scanning to end of
         # file lets a later sub-module with the same port names (e.g. CLA_16's
         # 'input [16:1] A;' inside verified_adder_32bit.v) overwrite the top
-        # module's widths — which then get force-aligned onto the generation.
+        # module's widths - which then get force-aligned onto the generation.
         body = content[header_end:]
         end_m = re.search(r'\bendmodule\b', body)
         if end_m:
@@ -312,9 +312,9 @@ def _extract_helper_modules(verified_file_path: str, target_module_name: str) ->
 
 
 
-# ──────────────────────────────────────────────────────────────
+# --------------------------------------------------------------
 # State preparation
-# ──────────────────────────────────────────────────────────────
+# --------------------------------------------------------------
 
 def _prepare_state(
     nl_input: str,
@@ -358,7 +358,7 @@ def _prepare_state(
         if match:
             state["module_name"] = match.group(1)
 
-    # TXT mode normally bypasses the NL→XML converter (placeholder sentinel).
+    # TXT mode normally bypasses the NL->XML converter (placeholder sentinel).
     # COMBA_FORCE_XML=1 forces the converter to run even for txt descriptions,
     # so a txt-only dataset (e.g. RTLLM_v2) goes through the SAME COMBA XML
     # pipeline as v1 (which uses RTLLM.txt). Leaving xml_description unset here
@@ -367,9 +367,12 @@ def _prepare_state(
     if desc_type == "txt" and not state.get("xml_description") and not _force_xml:
         state["xml_description"] = "(Bypassed XML; Using TXT mode)"
 
-    # Look for verified_*.v files to extract expected header
+    # Look for verified_*.v files to extract expected header.
+    # COMBA_BLIND_EVAL=1 (benchmark scoring): never read reference RTL. The
+    # helper-append below otherwise copies golden submodules into the candidate.
     target_name = state.get("module_name")
-    if dataset_dir and target_name:
+    _blind = os.environ.get("COMBA_BLIND_EVAL", "0") == "1"
+    if dataset_dir and target_name and not _blind:
         verified_files = []
         verified_files.extend(glob.glob(os.path.join(dataset_dir, "verified_*.v")))
         verified_files.extend(glob.glob(os.path.join(dataset_dir, "modules", target_name, "verified_*.v")))
@@ -387,20 +390,20 @@ def _prepare_state(
             extracted = _extract_header_from_verified(vf, target_name)
             if extracted:
                 state["expected_header"] = extracted
-                cprint(f"  🏗️ Extracted expected_header from verified file: {os.path.basename(vf)}")
+                cprint(f"  Extracted expected_header from verified file: {os.path.basename(vf)}")
                 # Extract helper modules too
                 helpers = _extract_helper_modules(vf, target_name)
                 if helpers:
                     state["helper_modules_code"] = helpers
-                    cprint(f"  📦 Extracted helper modules: {', '.join(helpers.keys())}")
+                    cprint(f"  Extracted helper modules: {', '.join(helpers.keys())}")
                 break
 
     return state
 
 
-# ──────────────────────────────────────────────────────────────
+# --------------------------------------------------------------
 # Pipeline runners (SC-aware)
-# ──────────────────────────────────────────────────────────────
+# --------------------------------------------------------------
 
 def run_pipeline_sync(
     nl_input: str,
@@ -473,9 +476,9 @@ def run_pipeline_streaming(
             yield node_name, state_update
 
 
-# ──────────────────────────────────────────────────────────────
+# --------------------------------------------------------------
 # Batch Evaluation (with SC dispatcher)
-# ──────────────────────────────────────────────────────────────
+# --------------------------------------------------------------
 
 def _run_one_module(
     description: str,
@@ -532,9 +535,9 @@ def _process_one_module(task: tuple) -> tuple:
     module_name = os.path.basename(module_path)
     pipeline_llm, graph = get_pipeline()  # worker-local cached pipeline
 
-    cprint(f"\n{'═' * 60}")
+    cprint(f"\n{'=' * 60}")
     cprint(f"  [{idx}/{total}] Module: {module_name}")
-    cprint(f"{'═' * 60}")
+    cprint(f"{'=' * 60}")
 
     if description_type == "xml":
         desc_file = os.path.join(module_path, "design_description.xml")
@@ -544,7 +547,7 @@ def _process_one_module(task: tuple) -> tuple:
         desc_file = os.path.join(module_path, f"design_description.{description_type}")
 
     if not os.path.isfile(desc_file):
-        cprint(f"  ⚠️ Description file not found: {desc_file}, skipping")
+        cprint(f"  [WARN] Description file not found: {desc_file}, skipping")
         return (module_name, None)
 
     with open(desc_file, "r", encoding="utf-8") as f:
@@ -555,7 +558,7 @@ def _process_one_module(task: tuple) -> tuple:
 
     for sample_idx in range(1, samples + 1):
         if samples > 1:
-            cprint(f"  ── Trial {sample_idx}/{samples} ──")
+            cprint(f"  [Trial {sample_idx}/{samples}]")
 
         sample_dataset_dir = dataset_dir
         if not sample_dataset_dir and "RTLLM" in module_path:
@@ -596,18 +599,18 @@ def _process_one_module(task: tuple) -> tuple:
                 result["guard_summary"] = final["guard_summary"]
 
             status = result["final_status"]
-            emoji = "🎉" if status == "pass" else "❌"
+            status_tag = "[PASS]" if status == "pass" else "[FAIL]"
 
             sc_meta = result.get("self_consistency")
             if sc_meta:
                 cprint(
-                    f"  {emoji} Result: {status} | SC:{result['sc_trial']} "
+                    f"  {status_tag} Result: {status} | SC:{result['sc_trial']} "
                     f"TS:{result['ts_trial']} | "
                     f"BoN: {sc_meta['samples_run']}/{sc_meta['max_samples']} "
                     f"(best=s{sc_meta['best_sample_idx']})"
                 )
             else:
-                cprint(f"  {emoji} Result: {status} | SC:{result['sc_trial']} TS:{result['ts_trial']}")
+                cprint(f"  {status_tag} Result: {status} | SC:{result['sc_trial']} TS:{result['ts_trial']}")
 
         except Exception as e:
             result = {
@@ -618,7 +621,7 @@ def _process_one_module(task: tuple) -> tuple:
                 "sc_trial": 0, "ts_trial": 0, "total_iter": 0,
                 "gvd": "", "xml_description": "", "sc_log": "", "tb_log": "",
             }
-            cprint(f"  ❌ Pipeline error: {e}")
+            cprint(f"  [ERROR] Pipeline error: {e}")
 
         sample_results.append(result)
 
@@ -636,7 +639,7 @@ def _process_one_module(task: tuple) -> tuple:
     with open(report_path, "w", encoding="utf-8") as f:
         json.dump(report_data, f, indent=2, ensure_ascii=False)
 
-    cprint(f"  📄 Report saved: {report_path}")
+    cprint(f"  Report saved: {report_path}")
     return (module_name, report_data)
 
 
@@ -672,7 +675,7 @@ def run_pipeline_batch(
     jobs = max(1, int(jobs))
     use_parallel = jobs > 1 and total > 1 and llm is None
     cprint(
-        f"[COMBA] Batch: {total} modules × {samples} sample(s) "
+        f"[COMBA] Batch: {total} modules x {samples} sample(s) "
         f"| SC={'ON' if sc_active else 'OFF'} | jobs={jobs if use_parallel else 1}"
     )
 
@@ -685,14 +688,46 @@ def run_pipeline_batch(
     if use_parallel:
         try:
             from multiprocess import Pool          # dill-based (matches main_langgraph)
+            from multiprocess import TimeoutError as MPTimeoutError
         except ImportError:
             from multiprocessing import Pool        # stdlib fallback
+            from multiprocessing import TimeoutError as MPTimeoutError
         nproc = min(jobs, total)
         cprint(f"[COMBA] Parallel batch: {nproc} worker process(es)")
+        # Per-result timeout instead of a bare for-loop: if a worker DIES
+        # mid-task, Pool silently replaces it but that task's result never
+        # arrives, so `for ... in imap_unordered(...)` hangs forever (a held-out
+        # gen/F2/rl2 wedged ~15h on 2026-10-02; same bug main_langgraph fixed
+        # 2026-07-20). Per-module reports are already on disk, so on a stall
+        # we stop collecting and proceed with what we have.
+        wall_budget = float(os.getenv("COMBA_WALL_BUDGET", "0"))
+        stall_sec = float(os.getenv(
+            "COMBA_POOL_STALL_SEC",
+            max(wall_budget * 3, 1800) if wall_budget > 0 else 7200,
+        ))
         with Pool(processes=nproc, initializer=_batch_worker_init) as pool:
-            for module_name, report_data in pool.imap_unordered(_process_one_module, tasks):
+            result_iter = pool.imap_unordered(_process_one_module, tasks)
+            got = 0
+            while got < len(tasks):
+                try:
+                    module_name, report_data = result_iter.next(timeout=stall_sec)
+                except MPTimeoutError:
+                    missing = sorted(
+                        set(os.path.basename(t[0]) for t in tasks) - set(all_results)
+                    )
+                    cprint(
+                        f"[COMBA] [pool] no result for {stall_sec:.0f}s after "
+                        f"{got}/{len(tasks)} — a worker likely died; proceeding. "
+                        f"Uncollected: {missing}"
+                    )
+                    break
+                except StopIteration:
+                    break
+                got += 1
                 if report_data is not None:
                     all_results[module_name] = report_data
+            # Do not wait on a possibly-wedged pool.
+            pool.terminate()
     else:
         # Sequential: build the pipeline once in this process (honors an
         # explicit `llm` if provided).
@@ -702,9 +737,9 @@ def run_pipeline_batch(
             if report_data is not None:
                 all_results[module_name] = report_data
 
-    cprint(f"\n{'═' * 60}")
+    cprint(f"\n{'=' * 60}")
     cprint("  SUMMARY")
-    cprint(f"{'═' * 60}")
+    cprint(f"{'=' * 60}")
     pass_count = 0
     sc_recovered = 0
     for name, data in all_results.items():
@@ -721,8 +756,8 @@ def run_pipeline_batch(
             if sc_meta and sc_meta.get("best_sample_idx", 0) > 0:
                 sc_recovered += 1
 
-        emoji = "✅" if status == "pass" else "❌"
-        cprint(f"  {emoji} {name}: {status} (SC:{r.get('sc_trial',0)} TS:{r.get('ts_trial',0)})")
+        status_tag = "[PASS]" if status == "pass" else "[FAIL]"
+        cprint(f"  {status_tag} {name}: {status} (SC:{r.get('sc_trial',0)} TS:{r.get('ts_trial',0)})")
 
     if total > 0:
         cprint(f"\n  Pass rate: {pass_count}/{total} ({pass_count/total*100:.1f}%)")
@@ -733,17 +768,17 @@ def run_pipeline_batch(
     summary_path = f"reports/summary_langgraph.{description_type}.json"
     with open(summary_path, "w", encoding="utf-8") as f:
         json.dump(all_results, f, indent=2, ensure_ascii=False)
-    cprint(f"  📄 Global summary: {summary_path}")
+    cprint(f"  Global summary: {summary_path}")
 
     md_path = _export_markdown_summary(all_results, description_type, samples, total)
-    cprint(f"  📝 Markdown summary: {md_path}")
+    cprint(f"  Markdown summary: {md_path}")
 
     return all_results
 
 
-# ──────────────────────────────────────────────────────────────
+# --------------------------------------------------------------
 # Markdown Summary Exporter
-# ──────────────────────────────────────────────────────────────
+# --------------------------------------------------------------
 
 def _export_markdown_summary(
     all_results: dict,
@@ -800,18 +835,18 @@ def _export_markdown_summary(
 
         if status == "pass":
             pass_count += 1
-            icon = "✅"
+            icon = "[PASS]"
             if sc_meta.get("best_sample_idx", 0) > 0:
                 sc_recovered += 1
         elif status == "fail_sc":
             fail_sc += 1
-            icon = "❌"
+            icon = "[FAIL]"
         elif status == "fail_ts":
             fail_ts += 1
-            icon = "❌"
+            icon = "[FAIL]"
         else:
             fail_other += 1
-            icon = "💥" if status == "error" else "⚠️"
+            icon = "[ERROR]" if status == "error" else "[WARN]"
 
         total_sc_trials += sc
         total_ts_trials += ts
@@ -820,7 +855,7 @@ def _export_markdown_summary(
             sc_total_samples += sc_meta["samples_run"]
         counted += 1
 
-        short_err = (err[:60] + "…") if len(err) > 60 else err
+        short_err = (err[:60] + "...") if len(err) > 60 else err
         bon = sc_meta.get("samples_run", 1)
         best_idx = sc_meta.get("best_sample_idx", 0)
 
@@ -839,7 +874,7 @@ def _export_markdown_summary(
     avg_samples = sc_total_samples / n if sc_active else 1.0
 
     lines = [
-        f"# COMBA Pipeline — Batch Summary",
+        f"# COMBA Pipeline - Batch Summary",
         f"",
         f"| Key | Value |",
         f"| --- | ----- |",
@@ -896,7 +931,7 @@ def _export_markdown_summary(
         f"",
         f"---",
         f"",
-        f"*Generated by COMBA pipeline runner · {timestamp}*",
+        f"*Generated by COMBA pipeline runner - {timestamp}*",
         f"*Full JSON: `reports/summary_langgraph.{description_type}.json`*",
     ]
 

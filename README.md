@@ -18,19 +18,25 @@ deterministic Sanitizer → syntax loop (Icarus Verilog / Verilator, TED → Deb
 | `src/main_langgraph.py` | VerilogEval V2 driver |
 | `src/parse_rtllm_trials.py` | syntax / functional pass@k from RTLLM trial reports |
 | `src/compute_metrics.py` | ablation table from per-arm results |
+| `src/blind_dataset.py`, `src/heldout_grade.py` | held-out protocol: dataset copy without reference RTL, regrading of final designs (Table IV) |
+| `src/langgraph_core/tb_validate.py` | testbench the system writes from the specification, accepted by mutation analysis (F2) |
+| `src/heldout_analyze.py` | Table IV and Section IV-D numbers: pass@1/pass@5, task bootstrap, paired contrasts |
+| `src/heldout_audit.py`, `src/leakcheck.py` | regrade audit of the original runs, corpus-wide benchmark leak scan |
 | `src/flow_src/` | PyraNet synthesis, cell-count extraction and filtering with Yosys (Table I) |
 | `training/` | Generator and Debugger training scripts, logs, adapter configs |
 | `utils/run_ablation.sh` | component ablation (Table III) |
+| `utils/run_heldout.sh` | held-out re-evaluation arms (Table IV) |
 | `launch_dual_gpu.sh` | serves the Generator (`:8000`) and the Debugger (`:8001`) with vLLM |
 | `RTLLM_v2/` | RTLLM v2.0 tasks as used in the paper |
 | `RTLLM/` | RTLLM v1.1 tasks (see `RTLLM/README.md`) |
 | `ext/verilog-eval/` | VerilogEval V2 (git submodule) |
 | `results/rtllm/` | per-arm pass@5 breakdowns behind Tables II and III |
+| `results/heldout/` | expected Table IV / Section IV numbers (`expected.csv`), leak scan (`leaked.json`) |
 
 ## Setup
 
 ```bash
-git clone --recursive https://github.com/<user>/REFINE-VerilogV2.git
+git clone --recursive https://github.com/tkim-061203/REFINE-VerilogV2.git
 cd REFINE-VerilogV2
 conda env create -f environment.yaml -n test_VE
 conda run -n test_VE pip install -r src/langgraph_core/requirements.txt
@@ -66,11 +72,71 @@ make synthesis && make extract && make filter
 Training is described in `training/README.md`. Runs with the same seed can still differ by 1–2 points
 because of vLLM batching.
 
+### Code revision
+
+Tables I–III were produced with the code of commit `0097ebf` (`git checkout 0097ebf`). Table IV and the
+held-out numbers in Sections IV-B, IV-D and IV-E use the current code, which adds the held-out protocol
+(`COMBA_BLIND_EVAL`), the generated-testbench path, the regrader and the analysis scripts. With
+`COMBA_BLIND_EVAL` unset the current code runs the original protocol, but its prompts and fixes differ from
+`0097ebf`.
+
+## Held-out re-evaluation (Table IV)
+
+Every arm hides the reference RTL from the loop (`COMBA_BLIND_EVAL=1` and a dataset copy without
+`verified_*.v`), and every final design is regraded against the official testbench in a fresh directory
+(RTLLM v1.1 under five fixed stimulus seeds). `utils/run_heldout.sh` starts vLLM with the right checkpoints
+for each model, runs the arms and writes `reports/heldout/<model>/<feedback>/<suite>/`.
+
+| Table IV row | command |
+|---|---|
+| REFINE-VerilogV2, F0 / F2 / F3 | `./utils/run_heldout.sh full F0 F2 F3` |
+| F3, base model in both roles | `./utils/run_heldout.sh base F3` |
+| F3, single shared adapter | `./utils/run_heldout.sh gen F3` |
+| F3, retrained, filtered corpus | `./utils/run_heldout.sh clean F0 F3` |
+| F3, retrained, random corpus | `./utils/run_heldout.sh random F3` |
+
+```bash
+export GEN_CKPT=<merged Generator> DBG_CKPT=<merged Debugger> BASE_QWEN=<Qwen2.5-Coder-7B-Instruct dir>
+./utils/run_heldout.sh full F0 F2 F3          # suites rl1 rl2 ve by default; about one day per model
+./utils/run_heldout.sh base F3
+./utils/run_heldout.sh gen F3
+./utils/run_heldout.sh full F0s -- rl1 rl2    # no-loop pass@5 (Section IV-B)
+./utils/run_heldout.sh full F3nt F3ns         # without TED / without the Sanitizer (Section IV-D)
+
+# retrained Generators, 230,177 rows each (training/README.md)
+TRAIN_JSONL=<Pyranet_text_only.jsonl> training/run_retrain.sh clean random
+CLEAN_CKPT=$HOME/retrain/models/model_qwen_generator_clean_merged  ./utils/run_heldout.sh clean F0 F3
+RANDOM_CKPT=$HOME/retrain/models/model_qwen_generator_random_merged ./utils/run_heldout.sh random F3
+
+# numbers: arms.csv (p1 with 95% task bootstrap CI, p5), paired.csv (mean per-task difference,
+# 95% paired bootstrap CI, 10,000 resamples, seed 0)
+python src/heldout_analyze.py reports/heldout --out reports/heldout_results
+```
+
+Compare `reports/heldout_results/arms.csv` and `paired.csv` with `results/heldout/expected.csv`, which lists
+every Table IV cell and every held-out number quoted in Sections IV-B, IV-D and IV-E with its source column.
+RTLLM v1.1 needs the tasks in `RTLLM/modules` (see `RTLLM/README.md`), VerilogEval needs
+`ext/verilog-eval`. The corpus-wide leak scan is
+`python src/leakcheck.py --out results/heldout/leaked.json --rows-out training/data/leak_rows.json --jobs 32`
+(PyraNet-Verilog CSV in the Hugging Face cache).
+
 ## Results reported in the paper
 
 | | VerilogEval V2 pass@1 (zero-shot T=0 / T=0.8, one-shot T=0 / T=0.8) | RTLLM v1.1 syntax / func pass@5 | RTLLM v2.0 syntax / func pass@5 |
 |---|---|---|---|
 | REFINE-VerilogV2 | 77.6 / 78.4 / 76.9 / 78.3 | 100.0 / 96.5 | 100.0 / 84.0 |
+
+Held-out re-evaluation (Table IV, pass@1, %; † Generator trained on the VerilogEval references):
+
+| Configuration | RTLLM v1.1 | RTLLM v2.0 | VerilogEval |
+|---|---|---|---|
+| REFINE-VerilogV2, F0 (single shot) | 41.4 | 30.0 | 56.4† |
+| REFINE-VerilogV2, F2 (oracle-free loop) | 28.3 | 31.6 | 41.0† |
+| REFINE-VerilogV2, F3 (official testbench) | 74.5 | 61.2 | 73.7† |
+| F3, base model in both roles | 67.6 | 54.0 | 57.1 |
+| F3, single shared adapter | 69.7 | 59.2 | 74.4† |
+| F3, retrained, filtered corpus | 74.5 | 60.0 | 66.0 |
+| F3, retrained, random corpus | 75.2 | 64.4 | 66.7 |
 
 | RTLLM | Full | No Debug | No Post | No Both |
 |---|---|---|---|---|
@@ -87,7 +153,7 @@ fraction of passing trials in `func_distribution`.
 - The testbench in the repair and selection loop is converted from each benchmark's own reference
   testbench, so these numbers are not directly comparable to single-shot baselines.
 - In this protocol the pipeline can read each RTLLM task's reference RTL for the module header and helper
-  modules.
+  modules. Table IV removes this access and regrades every final design.
 - The released Generator was trained with the 156 VerilogEval problems and their reference solutions
   appended to every curriculum stage (`training/scripts/train_gen_new.py`), so its VerilogEval results are
   not held-out.

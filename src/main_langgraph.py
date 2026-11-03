@@ -104,6 +104,14 @@ def do_process(args_tuple):
     """Run full COMBA pipeline once; dump per-sample JSON + artifacts."""
     problem_prompt_path, sample_idx, opts = args_tuple
 
+    # Per-request seeds are derived from (COMBA_LLM_SEED, prompt, temperature), so
+    # n samples of one problem would all be the same draw. Offset the base seed per
+    # sample, as benchmark_langgraph does per trial; sample 1 keeps the base seed.
+    _base_seed = os.environ.get("COMBA_LLM_SEED_BASE") or os.environ.get("COMBA_LLM_SEED", "")
+    if _base_seed.strip():
+        os.environ["COMBA_LLM_SEED_BASE"] = _base_seed
+        os.environ["COMBA_LLM_SEED"] = str(int(_base_seed) + 10_000 * (int(sample_idx) - 1))
+
     output_root = os.path.abspath(opts.output_dir)
     problem_base = os.path.basename(problem_prompt_path).replace("_prompt.txt", "")
 
@@ -148,7 +156,10 @@ def do_process(args_tuple):
             module_name="TopModule",
             benchmark_id=problem_base,
             llm=llm,
-            dataset_dir=PROBLEM_DIR,
+            # In-loop testbench source. Defaults to the official problem dir;
+            # COMBA_INLOOP_DATASET_DIR points the loop at a blind dir (no
+            # _test.sv/_ref.sv) while the final check below still uses PROBLEM_DIR.
+            dataset_dir=os.environ.get("COMBA_INLOOP_DATASET_DIR") or PROBLEM_DIR,
             work_dir=work_dir,
             desc_type=opts.desc_type,
         )
