@@ -43,7 +43,16 @@ conda run -n test_VE pip install -r src/langgraph_core/requirements.txt
 ```
 
 Tools: Icarus Verilog, Verilator 5.048 (some RTLLM results differ under 5.020), Yosys with the `slang`
-frontend (data filter only). Adapters: <https://huggingface.co/nntkim0612>.
+frontend (data filter only).
+
+Models (merged bf16, Qwen2.5-Coder-7B-Instruct + LoRA r = alpha = 912):
+
+| Model | Hugging Face |
+|---|---|
+| Generator (Tables II-IV) | [REFINE-VerilogV2-Generator](https://huggingface.co/nntkim0612/REFINE-VerilogV2-Generator) |
+| Debugger (Tables II-IV) | [REFINE-VerilogV2-Debugger](https://huggingface.co/nntkim0612/REFINE-VerilogV2-Debugger) |
+| Generator retrained, filtered corpus (Table IV) | [REFINE-VerilogV2-Generator-filtered](https://huggingface.co/nntkim0612/REFINE-VerilogV2-Generator-filtered) |
+| Generator retrained, random corpus (Table IV) | [REFINE-VerilogV2-Generator-random](https://huggingface.co/nntkim0612/REFINE-VerilogV2-Generator-random) |
 Default paths in `launch_dual_gpu.sh`, `Makefile` (`CONDA_ENV`) and `utils/run_ablation.sh` (`PY`) point to
 the authors' machine; set them to your own.
 
@@ -96,17 +105,20 @@ for each model, runs the arms and writes `reports/heldout/<model>/<feedback>/<su
 | F3, retrained, random corpus | `./utils/run_heldout.sh random F3` |
 
 ```bash
-export GEN_CKPT=<merged Generator> DBG_CKPT=<merged Debugger> BASE_QWEN=<Qwen2.5-Coder-7B-Instruct dir>
+for m in Generator Debugger Generator-filtered Generator-random; do
+  hf download nntkim0612/REFINE-VerilogV2-$m --local-dir $HOME/hf/$m
+done
+export GEN_CKPT=$HOME/hf/Generator DBG_CKPT=$HOME/hf/Debugger BASE_QWEN=<Qwen2.5-Coder-7B-Instruct dir>
 ./utils/run_heldout.sh full F0 F2 F3          # suites rl1 rl2 ve by default; about one day per model
 ./utils/run_heldout.sh base F3
 ./utils/run_heldout.sh gen F3
 ./utils/run_heldout.sh full F0s -- rl1 rl2    # no-loop pass@5 (Section IV-B)
 ./utils/run_heldout.sh full F3nt F3ns         # without TED / without the Sanitizer (Section IV-D)
 
-# retrained Generators, 230,177 rows each (training/README.md)
-TRAIN_JSONL=<Pyranet_text_only.jsonl> training/run_retrain.sh clean random
-CLEAN_CKPT=$HOME/retrain/models/model_qwen_generator_clean_merged  ./utils/run_heldout.sh clean F0 F3
-RANDOM_CKPT=$HOME/retrain/models/model_qwen_generator_random_merged ./utils/run_heldout.sh random F3
+# retrained Generators, 230,177 rows each (downloaded above, or rebuilt with
+# TRAIN_JSONL=<Pyranet_text_only.jsonl> training/run_retrain.sh clean random, see training/README.md)
+CLEAN_CKPT=$HOME/hf/Generator-filtered ./utils/run_heldout.sh clean F0 F3
+RANDOM_CKPT=$HOME/hf/Generator-random  ./utils/run_heldout.sh random F3
 
 # numbers: arms.csv (p1 with 95% task bootstrap CI, p5), paired.csv (mean per-task difference,
 # 95% paired bootstrap CI, 10,000 resamples, seed 0)
